@@ -1,0 +1,441 @@
+Script to monitor blocking locks
+
+1. Prepare the blocker.sql file.[ for blocking sessions more than 10 seconds)
+
+set feed off
+set pagesize 200
+set lines 299
+col event for a31
+SELECT
+s.inst_id,
+s.blocking_session,
+s.sid,
+s.serial#,
+s.seconds_in_wait,
+s.event
+FROM
+gv$session s
+WHERE
+blocking_session IS NOT NULL and s.seconds_in_wait > 10;
+
+2. Shell script.(/home/oracle/monitor/blocker.sh )
+
+export ORACLE_HOME=/oracle/app/oracle/product/12.1.0/dbhome_1
+export ORACLE_SID=ORCL
+export PATH=$ORACLE_HOME/bin:$PATH
+logfile=/home/oracle/monitor/block_alert.log
+sqlplus -s "/as sysdba" > /dev/null << EOF
+spool $logfile
+@/home/oracle/monitor/blocker.sql 
+spool off 
+exit 
+EOF 
+count=`cat $logfile|wc -l` 
+if [ $count -ge 1 ];
+ then mailx -s "BLOCKING SESSION REPORTED IN PROD DB ( > 10 SEC) " support@dbaclass.com < $logfile
+fi
+ 
+ 
+3. configure in crontab( every one minute)
+
+* * * * * /home/oracle/monitor/blocker.sh > /tmp/block.log
+====================================================== 
+Shell Script To Monitor Asm Diskgroup Usage
+
+
+
+
+ 
+export ORACLE_HOME=/oracle/app/oracle/product/12.1.0.2/dbhome_1
+export ORACLE_SID=PRODDB1
+export PATH=$ORACLE_HOME/bin:$PATH
+logfile=/export/home/oracle/asm_dg.log
+sqlplus -s "/as sysdba" > /dev/null << EOF spool $logfile 
+SET LINESIZE 150 
+SET PAGESIZE 9999 
+SET VERIFY off
+COLUMN group_name 
+FORMAT a25 HEAD 'DISKGROUP_NAME' 
+COLUMN state FORMAT a11 HEAD 'STATE' 
+COLUMN type FORMAT a6 HEAD 'TYPE' 
+COLUMN total_mb FORMAT 999,999,999 HEAD 'TOTAL SIZE(GB)' 
+COLUMN free_mb FORMAT 999,999,999 HEAD 'FREE SIZE (GB)' 
+COLUMN used_mb FORMAT 999,999,999 HEAD 'USED SIZE (GB)' 
+COLUMN pct_used FORMAT 999.99 HEAD 'PERCENTAGE USED' 
+ 
+SELECT distinct name group_name , state state , type type , 
+round(total_mb/1024) TOTAL_GB , round(free_mb/1024) free_gb , 
+round((total_mb - free_mb) / 1024) used_gb , 
+round((1- (free_mb / total_mb))*100, 2) pct_used from 
+v$asm_diskgroup where round((1- (free_mb / total_mb))*100, 2) > 90 ORDER BY name;
+spool off
+exit
+EOF
+count=`cat $logfile|wc -l`
+#echo $count
+if [ $count  -ge 4 ];
+ then
+  mailx -s "ASM DISKGROUP REACHED 90% UTILIZATION" support@dbaclass.com < $logfile
+fi
+ 
+2. Give proper permission:
+
+chmod 755 /export/home/oracle/asm_dg.sh
+
+0,15,30,45 * * * * /export/home/oracle/asm_dg.sh
+ 
+DBACLASS
+KNOWLEDGEBASE
+DBA SCRIPTS
+Q&A FORUM
+QUIZ
+Search.....
+HOME / SHELL SCRIPT / SHELL SCRIPT TO MONITOR ASM DISKGROUP USAGE
+Shell Script To Monitor Asm Diskgroup Usage
+4455 views Less than a minute  0
+REQUIREMENT:
+Write a shell script, which will trigger a mail alert, if the utilization of the asm diskgroup reached 90 percent.
+
+SOLUTION:
+1. Below is the shell script.
+
+Make sure to update ORACLE_HOME, ORACLE_SID inside the shell script.
+
+cat /export/home/oracle/asm_dg.sh
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+ 
+ 
+export ORACLE_HOME=/oracle/app/oracle/product/12.1.0.2/dbhome_1
+export ORACLE_SID=PRODDB1
+export PATH=$ORACLE_HOME/bin:$PATH
+logfile=/export/home/oracle/asm_dg.log
+sqlplus -s "/as sysdba" > /dev/null << EOF spool $logfile 
+SET LINESIZE 150 
+SET PAGESIZE 9999 
+SET VERIFY off
+COLUMN group_name 
+FORMAT a25 HEAD 'DISKGROUP_NAME' 
+COLUMN state FORMAT a11 HEAD 'STATE' 
+COLUMN type FORMAT a6 HEAD 'TYPE' 
+COLUMN total_mb FORMAT 999,999,999 HEAD 'TOTAL SIZE(GB)' 
+COLUMN free_mb FORMAT 999,999,999 HEAD 'FREE SIZE (GB)' 
+COLUMN used_mb FORMAT 999,999,999 HEAD 'USED SIZE (GB)' 
+COLUMN pct_used FORMAT 999.99 HEAD 'PERCENTAGE USED' 
+ 
+SELECT distinct name group_name , state state , type type , 
+round(total_mb/1024) TOTAL_GB , round(free_mb/1024) free_gb , 
+round((total_mb - free_mb) / 1024) used_gb , 
+round((1- (free_mb / total_mb))*100, 2) pct_used from 
+v$asm_diskgroup where round((1- (free_mb / total_mb))*100, 2) > 90 ORDER BY name;
+spool off
+exit
+EOF
+count=`cat $logfile|wc -l`
+#echo $count
+if [ $count  -ge 4 ];
+ then
+  mailx -s "ASM DISKGROUP REACHED 90% UTILIZATION" support@dbaclass.com < $logfile
+fi
+ 
+2. Give proper permission:
+
+ 
+chmod 755 /export/home/oracle/asm_dg.sh
+
+
+3. Configure in crontab:
+
+0,15,30,45 * * * * /export/home/oracle/asm_dg.sh
+
+=============================================================================
+
+Shell Script For Monitoring Alert Log
+
+Requirement:
+Configure a shell script to monitor alert log for all the databases on a server once in every 15 min.And in the case of any ORA- error mail to the DBA TEAM.
+
+Below script is prepared using the ADRCI utility of oracle 11g. It will monitor alert log for all the databases having same oracle base.
+
+SCRIPT:(Adrci_alert_log.ksh)
+
+
+###########################################################################################
+###### ALERT LOG CHECKING VIA ADRCI #######################################################
+######  Author - DBACLASS ADMIN   #######################################################
+###########################################################################################
+ 
+LOG_DIR=/export/home/oracle/Housekeeping/logs/alert_log_check_daily.txt
+adrci_homes=( $(adrci exec="show homes" | egrep -e rdbms ))
+echo '#########################################################################################################' > $LOG_DIR
+echo '###########################################ALERT LOG OUTPUT FOR LAST 15 MINUTES ###########################' >> $LOG_DIR
+echo '##########################################################################################################' >> $LOG_DIR
+ 
+for adrci_home in ${adrci_homes[@]}
+do
+ 
+echo ' '>>$LOG_DIR
+echo '##########################################################################################################' >> $LOG_DIR
+echo '##########################################################################################################' >> $LOG_DIR
+echo ' '>>$LOG_DIR
+echo $adrci_home' Alert Log' >> $LOG_DIR
+adrci exec="set home ${adrci_home}; show alert -p \\\"message_text like '%ORA-%' and originating_timestamp > systimestamp-1/96\\\"" -term >> $LOG_DIR
+ 
+done
+num_errors=`grep  -c 'ORA' $LOG_DIR`
+if [ $num_errors != 0 ]
+then
+ 
+mailx -s "ORA- error found in alert Log of the server  " support@dbaclass.com <$LOG_DIR
+ 
+fi
+
+Give 755 permission to the script
+
+chmod 755  Adrci_alert_log.ksh
+
+
+Configure the script in crontab:
+0,15,30,45 * * * * /export/home/oracle/Housekeeping/scripts/Adrci_alert_log.ksh > /export/home/oracle/Housekeeping/logs/error_alert.log 2>&1
+ 
+
+====================================================================================
+
+Tablespace Monitoring Shell Script
+
+Below script can be configured in crontab to send a notification to the support DBAs in case tablespace usage crosses a threshold.
+
+1. First, make the below .sql file, which will be used inside the shell script.
+In this script we have defined the threshold as 90%. You can change it as per your requirement.
+
+cat /export/home/oracle/Housekeeping/scripts/tablespace_alert.sql
+ 
+ 
+ 
+set feedback off
+set pagesize 70;
+set linesize 2000
+set head on
+COLUMN Tablespace        format a25 heading 'Tablespace Name'
+COLUMN autoextensible         format a11              heading 'AutoExtend'
+COLUMN files_in_tablespace    format 999             heading 'Files'
+COLUMN total_tablespace_space format 99999999 heading 'TotalSpace'
+COLUMN total_used_space       format 99999999 heading 'UsedSpace'
+COLUMN total_tablespace_free_space format 99999999 heading 'FreeSpace'
+COLUMN total_used_pct              format 9999      heading '%Used'
+COLUMN total_free_pct              format 9999     heading '%Free'
+COLUMN max_size_of_tablespace      format 99999999 heading 'ExtendUpto'
+COLUM total_auto_used_pct         format 999.99      heading 'Max%Used'
+COLUMN total_auto_free_pct         format 999.99      heading 'Max%Free'
+WITH tbs_auto AS
+     (SELECT DISTINCT tablespace_name, autoextensible
+                 FROM dba_data_files
+                WHERE autoextensible = 'YES'),
+     files AS
+     (SELECT   tablespace_name, COUNT (*) tbs_files,
+               SUM (BYTES/1024/1024) total_tbs_bytes
+          FROM dba_data_files
+      GROUP BY tablespace_name),
+     fragments AS
+     (SELECT   tablespace_name, COUNT (*) tbs_fragments,
+               SUM (BYTES)/1024/1024 total_tbs_free_bytes,
+               MAX (BYTES)/1024/1024 max_free_chunk_bytes
+          FROM dba_free_space
+      GROUP BY tablespace_name),
+     AUTOEXTEND AS
+     (SELECT   tablespace_name, SUM (size_to_grow) total_growth_tbs
+          FROM (SELECT   tablespace_name, SUM (maxbytes)/1024/1024 size_to_grow
+                    FROM dba_data_files
+                   WHERE autoextensible = 'YES'
+                GROUP BY tablespace_name
+                UNION
+                SELECT   tablespace_name, SUM (BYTES)/1024/1024 size_to_grow
+                    FROM dba_data_files
+                   WHERE autoextensible = 'NO'
+                GROUP BY tablespace_name)
+      GROUP BY tablespace_name)
+SELECT c.instance_name,a.tablespace_name Tablespace,
+       CASE tbs_auto.autoextensible
+          WHEN 'YES'
+             THEN 'YES'
+          ELSE 'NO'
+       END AS autoextensible,
+       files.tbs_files files_in_tablespace,
+       files.total_tbs_bytes total_tablespace_space,
+       (files.total_tbs_bytes - fragments.total_tbs_free_bytes
+       ) total_used_space,
+       fragments.total_tbs_free_bytes total_tablespace_free_space,
+       round((  (  (files.total_tbs_bytes - fragments.total_tbs_free_bytes)
+           / files.total_tbs_bytes
+          )
+        * 100
+       )) total_used_pct,
+       round(((fragments.total_tbs_free_bytes / files.total_tbs_bytes) * 100
+       )) total_free_pct
+  FROM dba_tablespaces a,v$instance c , files, fragments, AUTOEXTEND, tbs_auto
+WHERE a.tablespace_name = files.tablespace_name
+   AND a.tablespace_name = fragments.tablespace_name
+   AND a.tablespace_name = AUTOEXTEND.tablespace_name
+   AND a.tablespace_name = tbs_auto.tablespace_name(+)
+and (((files.total_tbs_bytes - fragments.total_tbs_free_bytes)/ files.total_tbs_bytes))* 100 > 90
+order by total_free_pct;
+
+2. Now prepare the shell script:
+At the beginning of the script, we need to define the env variables like ORACLE_HOME, PATCH, LD_LIBRARY_PATH, ORACLE_SID.
+
+Below is the final script(tablespace_threshold.ksh)
+ 
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+ 
+ 
+cat /export/home/oracle/Housekeeping/scripts/tablespace_threshold.ksh
+ 
+ 
+ 
+#!/bin/sh
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0/dbhome_1
+export PATH=$ORACLE_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib
+export ORACLE_SID=PRODDB
+cd /export/home/oracle/Housekeeping/scripts
+logfile=/export/home/oracle/Housekeeping/scripts/Tablespace_alert.log
+cnt1=`ps -ef|grep pmon|grep $ORACLE_SID|wc -l`
+if [ $cnt1 -eq 1 ];
+then
+sqlplus -s "/as sysdba" > /dev/null << EOF
+spool $logfile
+@/export/home/oracle/Housekeeping/scripts/tablespace_alert.sql
+spool off
+exit
+EOF
+# If there are more then these two lines in the output file, mail it.
+count=`cat $logfile|wc -l`
+#echo $count
+if [ $count  -ge 4 ];
+ then
+  mailx -s "TABLESPACE ALERT FOR PROD DB  " support@dbaclass.com <$logfile
+fi
+fi
+
+3. Now configure in crontab:
+
+0,15,30,45 * * * * /export/home/oracle/Housekeeping/scripts/tablespace_threshold.ksh > /export/home/oracle/Housekeeping/logs/ts_alert.log  2>&1
+ 
+=========================================================================
+Kill snipped sessions in oracle db
+REQUIREMENT: Configure a shell script, to kill the snipped sessions in the database regularly.   SHELL SCRIPT:
+
+ 
+# $Header: kill_snipped.sh  
+# *====================================================================================+
+# |  Author - DBACLASS ADMIN TEAM 
+# |                                                       |
+# +====================================================================================+
+# |
+# | DESCRIPTION
+# |     Kill the snipped session in database
+# | PLATFORM
+# |     Linux/Solaris/HP-UX
+ 
+# +===========================================================================+
+#!/usr/bin/ksh
+export ORACLE_HOME=/oracle/app/oracle/product/12.1.0.2/dbhome_1
+export PATH=$ORACLE_HOME/bin:$PATH
+export ORACLE_SID=TESTDB
+export LOG_PATH=/export/home/oracle/testdb/LOG
+rm -f $LOG_PATH/snip_kill.sql
+ 
+sqlplus -s /nolog << EOF
+connect system/oracle
+select count(*) from v\$session where status='SNIPED';
+spool $LOG_PATH/session_list.log append
+set lines 200 pages 1500 long 99999999
+alter session set nls_date_format='DD-MON-YYYY HH24:MI';
+select sysdate from dual;
+select sid,serial#,event,sql_id,last_call_et,username,status,machine,logon_time,process,substr(module,1,15) module from v\$session where status='SNIPED';
+spool off;
+set head off;
+set feed off;
+set pages 0;
+spool $LOG_PATH/snip_kill.sql
+select 'alter system kill session '''||sid||','||serial#||''' immediate;' from v\$session where status='SNIPED' ;
+spool off;
+@"$LOG_PATH/snip_kill.sql"
+exit;
+!
+date
+ 
+ chmod 755 kill_snipped.sh  
+ 
+00,10,20,30,40,50 * * * * /export/home/oracle/testdb/snip_session.sh > /export/home/oracle/testdb/LOG/snip_session.log
+ 
+ 
+ ========================================================================
+
+
+ 
+
+ 
